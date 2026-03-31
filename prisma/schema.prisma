@@ -1,0 +1,151 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  name            String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  mailConnections MailConnection[]
+  syncJobs        SyncJob[]
+  emailMessages   EmailMessage[]
+  invoices        Invoice[]
+}
+
+model MailConnection {
+  id                String         @id @default(cuid())
+  userId            String
+  provider          String
+  email             String
+  externalAccountId String?
+  accessToken       String?
+  refreshToken      String?
+  tokenExpiry       DateTime?
+  scope             String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  user              User           @relation(fields: [userId], references: [id])
+  emailMessages     EmailMessage[]
+
+  @@index([userId])
+  @@index([provider])
+}
+
+model SyncJob {
+  id              String    @id @default(cuid())
+  userId          String
+  type            String
+  status          String
+  cursorAfter     String?
+  messagesScanned Int       @default(0)
+  invoicesFound   Int       @default(0)
+  error           String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model EmailMessage {
+  id                String         @id @default(cuid())
+  userId            String
+  mailConnectionId  String
+  externalMessageId String
+  threadId          String?
+  subject           String?
+  fromEmail         String?
+  fromName          String?
+  snippet           String?
+  bodyText          String?
+  hasAttachments    Boolean        @default(false)
+  internalDate      DateTime?
+  extractionStatus  String         @default("pending")
+  processedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  user              User           @relation(fields: [userId], references: [id])
+  mailConnection    MailConnection @relation(fields: [mailConnectionId], references: [id])
+  attachments       Attachment[]
+  invoices          Invoice[]
+
+  @@unique([mailConnectionId, externalMessageId])
+  @@index([userId])
+  @@index([externalMessageId])
+}
+
+model Attachment {
+  id                   String       @id @default(cuid())
+  emailMessageId       String
+  externalAttachmentId String?
+  filename             String?
+  mimeType             String?
+  sizeBytes            Int?
+  checksumSha256       String?
+  extractedText        String?
+  createdAt            DateTime     @default(now())
+  emailMessage         EmailMessage @relation(fields: [emailMessageId], references: [id])
+  invoices             Invoice[]
+
+  @@index([emailMessageId])
+}
+
+model Invoice {
+  id                String       @id @default(cuid())
+  userId            String
+  emailMessageId    String?
+  attachmentId      String?
+  issuerName        String?
+  issuerEmail       String?
+  invoiceNumber     String?
+  amountValue       Decimal?     @db.Decimal(12, 2)
+  currency          String?
+  dueDate           DateTime?
+  issuedDate        DateTime?
+  category          String?
+  status            String       @default("pending")
+  confidence        Decimal?     @db.Decimal(4, 3)
+  sourceType        String?
+  fingerprint       String?
+  rawExtractionJson Json?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  user              User         @relation(fields: [userId], references: [id])
+  emailMessage      EmailMessage? @relation(fields: [emailMessageId], references: [id])
+  attachment        Attachment?  @relation(fields: [attachmentId], references: [id])
+  reminders         Reminder[]
+
+  @@index([userId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+model Reminder {
+  id        String    @id @default(cuid())
+  invoiceId String
+  remindAt  DateTime
+  channel   String
+  status    String    @default("scheduled")
+  sentAt    DateTime?
+  error     String?
+  createdAt DateTime  @default(now())
+  invoice   Invoice   @relation(fields: [invoiceId], references: [id])
+
+  @@index([status])
+}
