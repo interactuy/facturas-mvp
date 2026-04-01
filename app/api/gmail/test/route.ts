@@ -49,7 +49,7 @@ export async function GET() {
       email: mailConnection.email,
     });
 
-    const messages = await client.listRelevantMessages({ maxResults: 10 });
+    const messages = await client.listRelevantMessages({ pageSize: 10 });
 
     return Response.json({
       ok: true,

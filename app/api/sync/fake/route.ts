@@ -27,14 +27,6 @@ export async function POST(request: Request) {
         },
       }));
 
-    const client = getMailProviderClient(provider, {
-      accessToken: mailConnection.accessToken,
-      refreshToken: mailConnection.refreshToken,
-      tokenExpiry: mailConnection.tokenExpiry,
-      email: mailConnection.email,
-    });
-    const messages = await client.listRelevantMessages({ maxResults: 5 });
-
     const mailConnection =
       (await prisma.mailConnection.findFirst({
         where: {
@@ -49,6 +41,14 @@ export async function POST(request: Request) {
           email: `test+${provider}@example.com`,
         },
       }));
+
+    const client = getMailProviderClient(provider, {
+      accessToken: mailConnection.accessToken,
+      refreshToken: mailConnection.refreshToken,
+      tokenExpiry: mailConnection.tokenExpiry,
+      email: mailConnection.email,
+    });
+    const messages = await client.listRelevantMessages({ pageSize: 5 });
 
     await Promise.all(
       messages.map((message) =>

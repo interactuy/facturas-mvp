@@ -8,8 +8,8 @@ import type {
 } from "../types";
 
 const DEFAULT_GMAIL_QUERY =
-  '(factura OR invoice OR vencimiento OR bill OR statement)';
-const DEFAULT_MAX_RESULTS = 10;
+  '(factura OR invoice OR vencimiento OR bill OR statement OR "payment due" OR "amount due" OR recibo OR receipt)';
+const DEFAULT_PAGE_SIZE = 100;
 
 type GmailHeaderName = "Subject" | "From";
 
@@ -55,34 +55,54 @@ export class GmailMailProviderClient implements MailProviderClient {
 
   async listRelevantMessages(args?: {
     query?: string;
-    maxResults?: number;
+    newerThanDays?: number;
+    pageSize?: number;
   }): Promise<MailMessageSummary[]> {
-    const listResponse = await this.gmail.users.messages.list({
-      userId: "me",
-      q: args?.query ?? DEFAULT_GMAIL_QUERY,
-      maxResults: args?.maxResults ?? DEFAULT_MAX_RESULTS,
+    const summaries: MailMessageSummary[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const listResponse = await this.gmail.users.messages.list({
+        userId: "me",
+        q: buildWindowedQuery(args?.query, args?.newerThanDays),
+        maxResults: args?.pageSize ?? DEFAULT_PAGE_SIZE,
+        pageToken,
+      });
+
+      const messages = listResponse.data.messages ?? [];
+
+      const pageSummaries = await Promise.all(
+        messages
+          .filter(
+            (message): message is gmail_v1.Schema$Message => Boolean(message.id),
+          )
+          .map(async (message) => {
+            const detail = await this.gmail.users.messages.get({
+              userId: "me",
+              id: message.id!,
+              format: "metadata",
+              metadataHeaders: ["Subject", "From"],
+            });
+
+            return mapMessageSummary(detail.data);
+          }),
+      );
+
+      summaries.push(
+        ...pageSummaries.filter(
+          (summary): summary is MailMessageSummary => summary !== null,
+        ),
+      );
+
+      pageToken = listResponse.data.nextPageToken ?? undefined;
+    } while (pageToken);
+
+    return summaries.sort((a, b) => {
+      const aTime = a.internalDate?.getTime() ?? 0;
+      const bTime = b.internalDate?.getTime() ?? 0;
+
+      return bTime - aTime;
     });
-
-    const messages = listResponse.data.messages ?? [];
-
-    const summaries = await Promise.all(
-      messages
-        .filter((message): message is gmail_v1.Schema$Message => Boolean(message.id))
-        .map(async (message) => {
-          const detail = await this.gmail.users.messages.get({
-            userId: "me",
-            id: message.id!,
-            format: "metadata",
-            metadataHeaders: ["Subject", "From"],
-          });
-
-          return mapMessageSummary(detail.data);
-        }),
-    );
-
-    return summaries.filter(
-      (summary): summary is MailMessageSummary => summary !== null,
-    );
   }
 
   async getMessage(messageId: string): Promise<MailMessageDetail> {
@@ -105,6 +125,16 @@ export class GmailMailProviderClient implements MailProviderClient {
       attachments: extractAttachmentMetadata(message.payload),
     };
   }
+}
+
+function buildWindowedQuery(
+  query: string | undefined,
+  newerThanDays: number | undefined,
+) {
+  const baseQuery = query ?? DEFAULT_GMAIL_QUERY;
+  const recencyWindow = `newer_than:${newerThanDays ?? 30}d`;
+
+  return `${baseQuery} ${recencyWindow}`.trim();
 }
 
 function mapMessageSummary(

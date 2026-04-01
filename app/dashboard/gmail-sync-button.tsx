@@ -5,97 +5,82 @@ import { useRouter } from "next/navigation";
 
 export function GmailSyncButton() {
   const router = useRouter();
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncResponse, setSyncResponse] = useState<unknown>(null);
-  const [isEnriching, setIsEnriching] = useState(false);
-  const [enrichResponse, setEnrichResponse] = useState<unknown>(null);
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [extractResponse, setExtractResponse] = useState<unknown>(null);
-  const [isExtractingMailData, setIsExtractingMailData] = useState(false);
-  const [mailExtractionResponse, setMailExtractionResponse] =
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshResponse, setRefreshResponse] = useState<unknown>(null);
+  const [isSendingReminders, setIsSendingReminders] = useState(false);
+  const [reminderResponse, setReminderResponse] = useState<unknown>(null);
+  const [isSendingWhatsAppReminder, setIsSendingWhatsAppReminder] = useState(false);
+  const [whatsAppReminderResponse, setWhatsAppReminderResponse] =
     useState<unknown>(null);
 
-  async function handleSync() {
-    setIsSyncing(true);
+  async function handleRefresh() {
+    setIsRefreshing(true);
 
     try {
-      const res = await fetch("/api/gmail/sync", {
+      const res = await fetch("/api/mail-extractions/refresh", {
         method: "POST",
       });
       const data = await res.json();
 
-      setSyncResponse(data);
-    } catch (error) {
-      setSyncResponse({
-        ok: false,
-        error: error instanceof Error ? error.message : "Unknown sync error",
-      });
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
-  async function handleEnrich() {
-    setIsEnriching(true);
-
-    try {
-      const res = await fetch("/api/gmail/enrich", {
-        method: "POST",
-      });
-      const data = await res.json();
-
-      setEnrichResponse(data);
-    } catch (error) {
-      setEnrichResponse({
-        ok: false,
-        error: error instanceof Error ? error.message : "Unknown enrich error",
-      });
-    } finally {
-      setIsEnriching(false);
-    }
-  }
-
-  async function handleExtract() {
-    setIsExtracting(true);
-
-    try {
-      const res = await fetch("/api/invoices/extract", {
-        method: "POST",
-      });
-      const data = await res.json();
-
-      setExtractResponse(data);
-    } catch (error) {
-      setExtractResponse({
-        ok: false,
-        error: error instanceof Error ? error.message : "Unknown extract error",
-      });
-    } finally {
-      setIsExtracting(false);
-    }
-  }
-
-  async function handleMailExtractionRun() {
-    setIsExtractingMailData(true);
-
-    try {
-      const res = await fetch("/api/mail-extractions/run", {
-        method: "POST",
-      });
-      const data = await res.json();
-
-      setMailExtractionResponse(data);
+      setRefreshResponse(data);
       if (res.ok) {
         router.refresh();
       }
     } catch (error) {
-      setMailExtractionResponse({
+      setRefreshResponse({
         ok: false,
         error:
-          error instanceof Error ? error.message : "Unknown mail extraction error",
+          error instanceof Error ? error.message : "Unknown refresh error",
       });
     } finally {
-      setIsExtractingMailData(false);
+      setIsRefreshing(false);
+    }
+  }
+
+  async function handleSendReminders() {
+    setIsSendingReminders(true);
+
+    try {
+      const res = await fetch("/api/reminders/run", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      setReminderResponse(data);
+      if (res.ok) {
+        router.refresh();
+      }
+    } catch (error) {
+      setReminderResponse({
+        ok: false,
+        error:
+          error instanceof Error ? error.message : "Unknown reminder error",
+      });
+    } finally {
+      setIsSendingReminders(false);
+    }
+  }
+
+  async function handleSendWhatsAppReminder() {
+    setIsSendingWhatsAppReminder(true);
+
+    try {
+      const res = await fetch("/api/reminders/send-whatsapp", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      setWhatsAppReminderResponse(data);
+      if (res.ok) {
+        router.refresh();
+      }
+    } catch (error) {
+      setWhatsAppReminderResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown WhatsApp error",
+      });
+    } finally {
+      setIsSendingWhatsAppReminder(false);
     }
   }
 
@@ -104,64 +89,49 @@ export function GmailSyncButton() {
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={handleSync}
-          disabled={isSyncing}
+          onClick={handleRefresh}
+          disabled={isRefreshing}
           className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isSyncing ? "Sincronizando..." : "Sincronizar Gmail"}
+          {isRefreshing ? "Actualizando..." : "Actualizar facturas"}
         </button>
 
         <button
           type="button"
-          onClick={handleEnrich}
-          disabled={isEnriching}
+          onClick={handleSendReminders}
+          disabled={isSendingReminders}
           className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isEnriching ? "Enriqueciendo..." : "Enriquecer mails"}
+          {isSendingReminders ? "Enviando..." : "Enviar recordatorios"}
         </button>
 
         <button
           type="button"
-          onClick={handleExtract}
-          disabled={isExtracting}
-          className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={handleSendWhatsAppReminder}
+          disabled={isSendingWhatsAppReminder}
+          className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isExtracting ? "Extrayendo..." : "Extraer facturas"}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleMailExtractionRun}
-          disabled={isExtractingMailData}
-          className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isExtractingMailData
-            ? "Extrayendo datos..."
-            : "Extraer datos de mails"}
+          {isSendingWhatsAppReminder
+            ? "Enviando..."
+            : "Enviar recordatorio por WhatsApp"}
         </button>
       </div>
 
-      {syncResponse !== null ? (
+      {refreshResponse !== null ? (
         <pre className="mt-4 overflow-x-auto rounded-lg bg-zinc-900 p-4 text-xs text-zinc-100">
-          {JSON.stringify(syncResponse, null, 2)}
+          {JSON.stringify(refreshResponse, null, 2)}
         </pre>
       ) : null}
 
-      {enrichResponse !== null ? (
+      {reminderResponse !== null ? (
         <pre className="mt-4 overflow-x-auto rounded-lg bg-zinc-900 p-4 text-xs text-zinc-100">
-          {JSON.stringify(enrichResponse, null, 2)}
+          {JSON.stringify(reminderResponse, null, 2)}
         </pre>
       ) : null}
 
-      {extractResponse !== null ? (
+      {whatsAppReminderResponse !== null ? (
         <pre className="mt-4 overflow-x-auto rounded-lg bg-zinc-900 p-4 text-xs text-zinc-100">
-          {JSON.stringify(extractResponse, null, 2)}
-        </pre>
-      ) : null}
-
-      {mailExtractionResponse !== null ? (
-        <pre className="mt-4 overflow-x-auto rounded-lg bg-zinc-900 p-4 text-xs text-zinc-100">
-          {JSON.stringify(mailExtractionResponse, null, 2)}
+          {JSON.stringify(whatsAppReminderResponse, null, 2)}
         </pre>
       ) : null}
     </div>

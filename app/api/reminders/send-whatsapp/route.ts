@@ -1,6 +1,6 @@
 import { auth } from "../../../../auth";
-import { enrichPendingMessages } from "../../../../lib/mail-processing/pipeline";
 import { prisma } from "../../../../lib/prisma";
+import { sendNextWhatsAppReminderForUser } from "../../../../lib/whatsapp/service";
 
 export async function POST() {
   try {
@@ -16,6 +16,7 @@ export async function POST() {
 
     const user = await prisma.user.findUnique({
       where: { email },
+      select: { id: true },
     });
 
     if (!user) {
@@ -25,17 +26,23 @@ export async function POST() {
       );
     }
 
-    const summary = await enrichPendingMessages({
+    const result = await sendNextWhatsAppReminderForUser({
       userId: user.id,
     });
 
     return Response.json({
       ok: true,
-      enrichedCount: summary.enrichedCount,
+      remindedRow: result.extraction,
+      reminder: result.reminder,
+      reminderRecordAction: result.reminderRecordAction,
+      providerResult: result.providerResult,
+      body: result.body,
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Unknown Gmail enrich error";
+      error instanceof Error
+        ? error.message
+        : "Unknown WhatsApp reminder send error";
 
     return Response.json({ ok: false, error: message }, { status: 500 });
   }

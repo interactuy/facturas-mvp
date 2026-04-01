@@ -1,5 +1,5 @@
 import { auth } from "../../../../auth";
-import { enrichPendingMessages } from "../../../../lib/mail-processing/pipeline";
+import { refreshRecentMailExtractions } from "../../../../lib/mail-processing/pipeline";
 import { prisma } from "../../../../lib/prisma";
 
 export async function POST() {
@@ -16,6 +16,7 @@ export async function POST() {
 
     const user = await prisma.user.findUnique({
       where: { email },
+      select: { id: true },
     });
 
     if (!user) {
@@ -25,17 +26,19 @@ export async function POST() {
       );
     }
 
-    const summary = await enrichPendingMessages({
-      userId: user.id,
-    });
+    const summary = await refreshRecentMailExtractions(user.id);
 
     return Response.json({
       ok: true,
+      syncedCount: summary.syncedCount,
       enrichedCount: summary.enrichedCount,
+      extractedCount: summary.extractedCount,
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Unknown Gmail enrich error";
+      error instanceof Error
+        ? error.message
+        : "Unknown mail extraction refresh error";
 
     return Response.json({ ok: false, error: message }, { status: 500 });
   }

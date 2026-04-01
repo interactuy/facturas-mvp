@@ -1,11 +1,15 @@
 import { redirect } from "next/navigation";
 import { auth, signOut } from "../../auth";
+import { isMailExtractionStatus } from "../../lib/mail-extractions/status";
 import { prisma } from "../../lib/prisma";
 import { GmailSyncButton } from "./gmail-sync-button";
+import { MailExtractionsTable } from "./mail-extractions-table";
 
 export default async function DashboardPage() {
   const session = await auth();
   const userEmail = session?.user?.email?.trim();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   if (!userEmail) {
     redirect("/login");
@@ -27,30 +31,35 @@ export default async function DashboardPage() {
   const extractionRows = await prisma.mailExtraction.findMany({
     where: {
       userId: user.id,
+      emailMessage: {
+        internalDate: {
+          gte: thirtyDaysAgo,
+        },
+      },
     },
     include: {
       emailMessage: {
         select: {
           subject: true,
           fromEmail: true,
+          internalDate: true,
         },
       },
     },
   });
 
-  extractionRows.sort((a, b) => {
-    if (a.dueDate && b.dueDate) {
-      return a.dueDate.getTime() - b.dueDate.getTime();
-    }
-    if (a.dueDate && !b.dueDate) {
-      return -1;
-    }
-    if (!a.dueDate && b.dueDate) {
-      return 1;
-    }
-
-    return a.createdAt.getTime() - b.createdAt.getTime();
-  });
+  const tableRows = extractionRows.map((row) => ({
+    id: row.id,
+    remitente: row.issuerEmail ?? row.emailMessage.fromEmail ?? "-",
+    asunto: row.emailMessage.subject ?? "-",
+    fecha: row.emailMessage.internalDate?.toISOString() ?? null,
+    vencimiento: row.dueDate?.toISOString() ?? null,
+    monto: row.amountValue ? Number(row.amountValue) : null,
+    moneda: row.currency,
+    vencimientoEstimado: row.dueDateEstimated,
+    categoria: row.category,
+    status: isMailExtractionStatus(row.status) ? row.status : "pendiente",
+  }));
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-100 px-6 py-12">
@@ -121,62 +130,7 @@ export default async function DashboardPage() {
               para generar resultados.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-zinc-200 text-sm">
-                <thead className="bg-zinc-50">
-                  <tr className="text-left text-xs uppercase tracking-wide text-zinc-500">
-                    <th className="px-4 py-3 font-medium">Issuer</th>
-                    <th className="px-4 py-3 font-medium">Remitente/Email</th>
-                    <th className="px-4 py-3 font-medium">Subject</th>
-                    <th className="px-4 py-3 font-medium">Amount</th>
-                    <th className="px-4 py-3 font-medium">Due Date</th>
-                    <th className="px-4 py-3 font-medium">Estimated?</th>
-                    <th className="px-4 py-3 font-medium">Paid Status</th>
-                    <th className="px-4 py-3 font-medium">Document Type</th>
-                    <th className="px-4 py-3 font-medium">Category</th>
-                    <th className="px-4 py-3 font-medium">Confidence</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 bg-white">
-                  {extractionRows.map((row) => (
-                    <tr key={row.id} className="align-top">
-                      <td className="px-4 py-3 text-zinc-900">
-                        {row.issuerName ?? "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.issuerEmail ?? row.emailMessage.fromEmail ?? "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.emailMessage.subject ?? "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.amountValue
-                          ? `${row.currency ?? ""} ${row.amountValue.toString()}`
-                          : "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.dueDate ? row.dueDate.toISOString().slice(0, 10) : "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.dueDateEstimated ? "yes" : "no"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.paidStatus ?? "unknown"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.documentType ?? "unknown"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.category ?? "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">
-                        {row.confidence?.toString() ?? "-"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <MailExtractionsTable rows={tableRows} />
           )}
         </section>
       </div>

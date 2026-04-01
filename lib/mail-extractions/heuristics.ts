@@ -35,6 +35,34 @@ const PAID_KEYWORDS = [
   "thank you for your payment",
 ] as const;
 
+const NEGATIVE_KEYWORDS = [
+  "tu viaje",
+  "trip",
+  "uber trip",
+  "thanks for riding",
+  "viaje del lunes",
+  "travel receipt",
+  "activity receipt",
+  "receipt",
+  "payment confirmation",
+  "confirmacion de pago",
+  "pago realizado",
+  "compra realizada",
+  "gracias por tu compra",
+  "thank you for your purchase",
+  "purchase confirmation",
+  "order confirmation",
+  "successful payment",
+  "paid successfully",
+  "comprobante",
+  "transaction complete",
+] as const;
+
+const NEGATIVE_SENDER_PATTERNS = [
+  "noreply@uber.com",
+  "uber.com",
+] as const;
+
 const PENDING_KEYWORDS = [
   "invoice",
   "factura",
@@ -63,6 +91,26 @@ const RECEIPT_KEYWORDS = [
   "comprobante",
   "payment confirmation",
   "confirmacion de pago",
+] as const;
+
+const OBLIGATION_KEYWORDS = [
+  "invoice",
+  "factura",
+  "bill",
+  "amount due",
+  "payment due",
+  "due date",
+  "vencimiento",
+  "vence",
+  "por pagar",
+  "pending payment",
+  "payment required",
+  "renewal",
+  "subscription renewal",
+  "estado de cuenta",
+  "statement",
+  "account statement",
+  "resumen",
 ] as const;
 
 const RELATED_KEYWORDS = [
@@ -338,6 +386,18 @@ function estimateDueDate(baseDate: Date | null, paidStatus: string): Date {
   return date;
 }
 
+function hasStrongNegativeSignal(text: string) {
+  return NEGATIVE_KEYWORDS.some((keyword) => text.includes(keyword));
+}
+
+function hasBlockedSender(fromEmail: string | null | undefined) {
+  const normalizedEmail = normalizeText(fromEmail);
+
+  return NEGATIVE_SENDER_PATTERNS.some((pattern) =>
+    normalizedEmail.includes(pattern),
+  );
+}
+
 export function runMailPaymentHeuristics(
   input: MailHeuristicInput,
 ): MailHeuristicResult {
@@ -354,6 +414,9 @@ export function runMailPaymentHeuristics(
   const pendingMatches = countMatches(combinedText, PENDING_KEYWORDS);
   const statementMatches = countMatches(combinedText, STATEMENT_KEYWORDS);
   const relatedMatches = countMatches(combinedText, RELATED_KEYWORDS);
+  const obligationMatches = countMatches(combinedText, OBLIGATION_KEYWORDS);
+  const negativeMatches = countMatches(combinedText, NEGATIVE_KEYWORDS);
+  const blockedSender = hasBlockedSender(input.fromEmail);
 
   let paidStatus: MailHeuristicResult["paidStatus"] = "unknown";
   if (paidMatches.length > pendingMatches.length && paidMatches.length > 0) {
@@ -407,10 +470,43 @@ export function runMailPaymentHeuristics(
     reasons.push(`Category inferred: ${category}`);
   }
 
+  const hasNegativeSignal = hasStrongNegativeSignal(combinedText);
+  if (negativeMatches.length > 0) {
+    reasons.push(`Negative markers: ${negativeMatches.join(", ")}`);
+  }
+  if (blockedSender) {
+    reasons.push(`Blocked sender/domain: ${input.fromEmail ?? "unknown sender"}`);
+  }
+
+  const looksLikeObligation =
+    obligationMatches.length > 0 ||
+    pendingMatches.length > 0 ||
+    statementMatches.length > 0;
+
   const looksPaymentRelated =
-    relatedMatches.length > 0 ||
-    amountExtraction.amountValue !== null ||
-    dueDateExtraction.dueDate !== null;
+    looksLikeObligation &&
+    !hasNegativeSignal &&
+    !blockedSender &&
+    documentType !== "payment_receipt" &&
+    paidStatus !== "paid" &&
+    (
+      relatedMatches.length > 0 ||
+      amountExtraction.amountValue !== null ||
+      dueDateExtraction.dueDate !== null
+    );
+
+  if (!looksLikeObligation) {
+    reasons.push("Rejected because it does not look like an unpaid bill or payment obligation");
+  }
+  if (documentType === "payment_receipt" || paidStatus === "paid") {
+    reasons.push("Rejected because it looks like a receipt or completed payment");
+  }
+  if (hasNegativeSignal) {
+    reasons.push("Rejected because it matches transactional or travel receipt patterns");
+  }
+  if (blockedSender) {
+    reasons.push("Rejected because sender/domain matches blocked travel receipt patterns");
+  }
 
   let dueDate = dueDateExtraction.dueDate;
   let dueDateEstimated = false;
@@ -441,6 +537,14 @@ export function runMailPaymentHeuristics(
   }
   if (category) {
     confidence += 0.05;
+  }
+  if (
+    hasNegativeSignal ||
+    blockedSender ||
+    documentType === "payment_receipt" ||
+    paidStatus === "paid"
+  ) {
+    confidence = Math.min(confidence, 0.2);
   }
   confidence = Math.min(0.995, confidence);
 

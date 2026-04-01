@@ -34,7 +34,8 @@ export type MailMessageDetail = {
 export interface MailProviderClient {
   listRelevantMessages(args?: {
     query?: string;
-    maxResults?: number;
+    newerThanDays?: number;
+    pageSize?: number;
   }): Promise<MailMessageSummary[]>;
   getMessage(messageId: string): Promise<MailMessageDetail>;
 }

@@ -1,5 +1,5 @@
 import { auth } from "../../../../auth";
-import { getMailProviderClient } from "../../../../lib/mail";
+import { syncRecentGmailMessages } from "../../../../lib/mail-processing/pipeline";
 import { prisma } from "../../../../lib/prisma";
 
 export async function POST() {
@@ -25,73 +25,13 @@ export async function POST() {
       );
     }
 
-    const mailConnection = await prisma.mailConnection.findFirst({
-      where: {
-        userId: user.id,
-        provider: "gmail",
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
+    const summary = await syncRecentGmailMessages({
+      userId: user.id,
     });
-
-    if (!mailConnection) {
-      return Response.json(
-        { ok: false, error: "Gmail connection not found" },
-        { status: 404 },
-      );
-    }
-
-    const client = getMailProviderClient("gmail", {
-      accessToken: mailConnection.accessToken,
-      refreshToken: mailConnection.refreshToken,
-      tokenExpiry: mailConnection.tokenExpiry,
-      email: mailConnection.email,
-    });
-
-    const messages = await client.listRelevantMessages({ maxResults: 20 });
-
-    await Promise.all(
-      messages.map((message) =>
-        prisma.emailMessage.upsert({
-          where: {
-            mailConnectionId_externalMessageId: {
-              mailConnectionId: mailConnection.id,
-              externalMessageId: message.id,
-            },
-          },
-          update: {
-            userId: user.id,
-            threadId: message.threadId,
-            subject: message.subject,
-            fromEmail: message.fromEmail,
-            fromName: message.fromName,
-            snippet: message.snippet,
-            internalDate: message.internalDate,
-            hasAttachments: message.hasAttachments,
-            extractionStatus: "pending",
-          },
-          create: {
-            userId: user.id,
-            mailConnectionId: mailConnection.id,
-            externalMessageId: message.id,
-            threadId: message.threadId,
-            subject: message.subject,
-            fromEmail: message.fromEmail,
-            fromName: message.fromName,
-            snippet: message.snippet,
-            internalDate: message.internalDate,
-            hasAttachments: message.hasAttachments,
-            extractionStatus: "pending",
-          },
-        }),
-      ),
-    );
 
     return Response.json({
       ok: true,
-      syncedCount: messages.length,
-      messages,
+      syncedCount: summary.syncedCount,
     });
   } catch (error) {
     const message =

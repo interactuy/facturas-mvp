@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "MailExtractionReminder_mailExtractionId_channel_kind_dueDateSn_" RENAME TO "MailExtractionReminder_mailExtractionId_channel_kind_dueDat_key";
